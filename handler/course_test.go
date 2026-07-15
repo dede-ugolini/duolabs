@@ -40,7 +40,7 @@ func TestGetCourses_Empty(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
+	h.GetAll(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -62,7 +62,7 @@ func TestGetCourses_ReturnsAll(t *testing.T) {
 		body, _ := json.Marshal(c)
 		req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, req)
+		h.Create(w, req)
 		if w.Code != http.StatusCreated {
 			t.Fatalf("POST failed: %d", w.Code)
 		}
@@ -70,7 +70,7 @@ func TestGetCourses_ReturnsAll(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
+	h.GetAll(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -89,12 +89,12 @@ func TestGetCourses_OrderDesc(t *testing.T) {
 		body, _ := json.Marshal(model.Course{Title: title, Xp: 10})
 		req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		h.ServeHTTP(w, req)
+		h.Create(w, req)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
+	h.GetAll(w, req)
 
 	var courses []model.Course
 	json.NewDecoder(w.Body).Decode(&courses)
@@ -112,7 +112,7 @@ func TestPostCourse_Success(t *testing.T) {
 	body, _ := json.Marshal(model.Course{Title: "Testing 101", Xp: 50})
 	req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
+	h.Create(w, req)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", w.Code)
@@ -135,7 +135,7 @@ func TestPostCourse_InvalidJSON(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader([]byte("not json")))
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
+	h.Create(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -148,7 +148,7 @@ func TestPostThenGet(t *testing.T) {
 	body, _ := json.Marshal(model.Course{Title: "Integration", Xp: 999})
 	postReq := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 	postW := httptest.NewRecorder()
-	h.ServeHTTP(postW, postReq)
+	h.Create(postW, postReq)
 
 	if postW.Code != http.StatusCreated {
 		t.Fatalf("POST failed: %d", postW.Code)
@@ -156,7 +156,7 @@ func TestPostThenGet(t *testing.T) {
 
 	getReq := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	getW := httptest.NewRecorder()
-	h.ServeHTTP(getW, getReq)
+	h.GetAll(getW, getReq)
 
 	var courses []model.Course
 	json.NewDecoder(getW.Body).Decode(&courses)

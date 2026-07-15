@@ -16,16 +16,7 @@ func NewCourseHandler(s store.CourseStore) *CourseHandler {
 	return &CourseHandler{Store: s}
 }
 
-func (h *CourseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		h.getAll(w, r)
-	case http.MethodPost:
-		h.create(w, r)
-	}
-}
-
-func (h *CourseHandler) getAll(w http.ResponseWriter, _ *http.Request) {
+func (h *CourseHandler) GetAll(w http.ResponseWriter, _ *http.Request) {
 	courses, err := h.Store.FindAll()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -34,7 +25,7 @@ func (h *CourseHandler) getAll(w http.ResponseWriter, _ *http.Request) {
 	json.NewEncoder(w).Encode(courses)
 }
 
-func (h *CourseHandler) create(w http.ResponseWriter, r *http.Request) {
+func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var course model.Course
 	if err := json.NewDecoder(r.Body).Decode(&course); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)

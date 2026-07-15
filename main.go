@@ -25,8 +25,10 @@ func main() {
 	courseStore := store.NewSQLiteCourseStore(db)
 	courseHandler := handler.NewCourseHandler(courseStore)
 
-	http.Handle("/courses", courseHandler)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /courses", courseHandler.GetAll)
+	mux.HandleFunc("POST /courses", courseHandler.Create)
 
 	log.Println("API running on :8081")
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Fatal(http.ListenAndServe(":8081", mux))
 }
