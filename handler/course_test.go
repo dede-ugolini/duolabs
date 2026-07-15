@@ -35,6 +35,48 @@ func setupTestStore(t *testing.T) store.CourseStore {
 	return store.NewSQLiteCourseStore(db)
 }
 
+func TestGetByID_Found(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	body, _ := json.Marshal(model.Course{
+		Title: "Hello World",
+		Xp:    100,
+	})
+	h.Create(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/courses", bytes.NewReader(body)))
+
+	req := httptest.NewRequest(http.MethodGet, "/courses/1", nil)
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	h.GetByID(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("Expected %d, got %d", http.StatusFound, w.Code)
+	}
+}
+
+func TestGetByID_NotFound(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	req := httptest.NewRequest(http.MethodGet, "/courses/9999", nil)
+	req.SetPathValue("id", "9999")
+	w := httptest.NewRecorder()
+	h.GetByID(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("Expected %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestGetByID_BadID(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	req := httptest.NewRequest(http.MethodGet, "/courses/abc", nil)
+	req.SetPathValue("id", "abc")
+	w := httptest.NewRecorder()
+	h.GetByID(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
 func TestGetCourses_Empty(t *testing.T) {
 	h := handler.NewCourseHandler(setupTestStore(t))
 

@@ -1,3 +1,4 @@
+// Package store provides the store
 package store
 
 import (
@@ -8,6 +9,7 @@ import (
 
 type CourseStore interface {
 	FindAll() ([]model.Course, error)
+	FindByID(id int) (model.Course, error)
 	Create(course *model.Course) error
 }
 
@@ -23,6 +25,12 @@ func (s *SQLiteCourseStore) FindAll() ([]model.Course, error) {
 	var courses []model.Course
 	err := s.db.Order("created_at desc").Find(&courses).Error
 	return courses, err
+}
+
+func (s *SQLiteCourseStore) FindByID(id int) (model.Course, error) {
+	var course model.Course
+	err := s.db.First(&course, id).Error
+	return course, err
 }
 
 func (s *SQLiteCourseStore) Create(course *model.Course) error {

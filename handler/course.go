@@ -3,9 +3,12 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"duolabs/model"
 	"duolabs/store"
+
+	"gorm.io/gorm"
 )
 
 type CourseHandler struct {
@@ -23,6 +26,27 @@ func (h *CourseHandler) GetAll(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(courses)
+}
+
+func (h *CourseHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if id == 0 || err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	course, err := h.Store.FindByID(id)
+	if err != nil {
+		switch err {
+		case gorm.ErrRecordNotFound:
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusFound)
+	_ = json.NewEncoder(w).Encode(course)
 }
 
 func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
