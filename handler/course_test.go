@@ -1,4 +1,4 @@
-package main
+package handler_test
 
 import (
 	"bytes"
@@ -8,11 +8,15 @@ import (
 	"os"
 	"testing"
 
+	"duolabs/handler"
+	"duolabs/model"
+	"duolabs/store"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-func setupTestDB(t *testing.T) *handler {
+func setupTestStore(t *testing.T) store.CourseStore {
 	t.Helper()
 	tmp, err := os.CreateTemp("", "duolabs-test-*.db")
 	if err != nil {
@@ -25,41 +29,40 @@ func setupTestDB(t *testing.T) *handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&Course{}); err != nil {
+	if err := db.AutoMigrate(&model.Course{}); err != nil {
 		t.Fatal(err)
 	}
-	return &handler{db: db}
+	return store.NewSQLiteCourseStore(db)
 }
 
 func TestGetCourses_Empty(t *testing.T) {
-	h := setupTestDB(t)
+	h := handler.NewCourseHandler(setupTestStore(t))
 
 	req := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	w := httptest.NewRecorder()
-
-	h.coursesHandler(w, req)
+	h.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	var courses []Course
-	_ = json.NewDecoder(w.Body).Decode(&courses)
+	var courses []model.Course
+	json.NewDecoder(w.Body).Decode(&courses)
 	if len(courses) != 0 {
 		t.Fatalf("expected empty array, got %d courses", len(courses))
 	}
 }
 
 func TestGetCourses_ReturnsAll(t *testing.T) {
-	h := setupTestDB(t)
+	h := handler.NewCourseHandler(setupTestStore(t))
 
-	for _, c := range []Course{
+	for _, c := range []model.Course{
 		{Title: "Go Basics", Xp: 100},
 		{Title: "Advanced Go", Xp: 250},
 	} {
 		body, _ := json.Marshal(c)
 		req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		h.coursesHandler(w, req)
+		h.ServeHTTP(w, req)
 		if w.Code != http.StatusCreated {
 			t.Fatalf("POST failed: %d", w.Code)
 		}
@@ -67,12 +70,12 @@ func TestGetCourses_ReturnsAll(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	w := httptest.NewRecorder()
-	h.coursesHandler(w, req)
+	h.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	var courses []Course
+	var courses []model.Course
 	json.NewDecoder(w.Body).Decode(&courses)
 	if len(courses) != 2 {
 		t.Fatalf("expected 2 courses, got %d", len(courses))
@@ -80,20 +83,20 @@ func TestGetCourses_ReturnsAll(t *testing.T) {
 }
 
 func TestGetCourses_OrderDesc(t *testing.T) {
-	h := setupTestDB(t)
+	h := handler.NewCourseHandler(setupTestStore(t))
 
 	for _, title := range []string{"First", "Second", "Third"} {
-		body, _ := json.Marshal(Course{Title: title, Xp: 10})
+		body, _ := json.Marshal(model.Course{Title: title, Xp: 10})
 		req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 		w := httptest.NewRecorder()
-		h.coursesHandler(w, req)
+		h.ServeHTTP(w, req)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	w := httptest.NewRecorder()
-	h.coursesHandler(w, req)
+	h.ServeHTTP(w, req)
 
-	var courses []Course
+	var courses []model.Course
 	json.NewDecoder(w.Body).Decode(&courses)
 	if len(courses) != 3 {
 		t.Fatalf("expected 3 courses, got %d", len(courses))
@@ -104,18 +107,17 @@ func TestGetCourses_OrderDesc(t *testing.T) {
 }
 
 func TestPostCourse_Success(t *testing.T) {
-	h := setupTestDB(t)
+	h := handler.NewCourseHandler(setupTestStore(t))
 
-	body, _ := json.Marshal(Course{Title: "Testing 101", Xp: 50})
+	body, _ := json.Marshal(model.Course{Title: "Testing 101", Xp: 50})
 	req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-
-	h.coursesHandler(w, req)
+	h.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", w.Code)
 	}
-	var course Course
+	var course model.Course
 	json.NewDecoder(w.Body).Decode(&course)
 	if course.ID == 0 {
 		t.Fatal("expected non-zero ID")
@@ -129,12 +131,11 @@ func TestPostCourse_Success(t *testing.T) {
 }
 
 func TestPostCourse_InvalidJSON(t *testing.T) {
-	h := setupTestDB(t)
+	h := handler.NewCourseHandler(setupTestStore(t))
 
 	req := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader([]byte("not json")))
 	w := httptest.NewRecorder()
-
-	h.coursesHandler(w, req)
+	h.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -142,12 +143,12 @@ func TestPostCourse_InvalidJSON(t *testing.T) {
 }
 
 func TestPostThenGet(t *testing.T) {
-	h := setupTestDB(t)
+	h := handler.NewCourseHandler(setupTestStore(t))
 
-	body, _ := json.Marshal(Course{Title: "Integration", Xp: 999})
+	body, _ := json.Marshal(model.Course{Title: "Integration", Xp: 999})
 	postReq := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
 	postW := httptest.NewRecorder()
-	h.coursesHandler(postW, postReq)
+	h.ServeHTTP(postW, postReq)
 
 	if postW.Code != http.StatusCreated {
 		t.Fatalf("POST failed: %d", postW.Code)
@@ -155,9 +156,9 @@ func TestPostThenGet(t *testing.T) {
 
 	getReq := httptest.NewRequest(http.MethodGet, "/courses", nil)
 	getW := httptest.NewRecorder()
-	h.coursesHandler(getW, getReq)
+	h.ServeHTTP(getW, getReq)
 
-	var courses []Course
+	var courses []model.Course
 	json.NewDecoder(getW.Body).Decode(&courses)
 	if len(courses) != 1 {
 		t.Fatalf("expected 1 course, got %d", len(courses))
