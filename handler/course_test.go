@@ -255,3 +255,62 @@ func TestPostThenGet(t *testing.T) {
 		t.Fatalf("expected title %q, got %q", "Integration", courses[0].Title)
 	}
 }
+
+func TestUpdate_Found(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	postBody, _ := json.Marshal(model.Course{Title: "Update Me", Xp: 67})
+	postReq := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(postBody))
+	h.Create(httptest.NewRecorder(), postReq)
+
+	putBody, _ := json.Marshal(model.Course{Title: "Update Found", Xp: 67})
+	putReq := httptest.NewRequest(http.MethodPut, "/courses/1", bytes.NewReader(putBody))
+	putReq.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	h.Update(w, putReq)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected %d, got %d", http.StatusOK, w.Code)
+	}
+}
+
+func TestUpdate_NotFound(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	body, _ := json.Marshal(model.Course{Title: "Update Me", Xp: 67})
+	req := httptest.NewRequest(http.MethodPut, "/courses/1", bytes.NewReader(body))
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	h.Update(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("Expected %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestUpdate_InvalidJSON(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	postBody, _ := json.Marshal(model.Course{Title: "Update Me", Xp: 67})
+	postReq := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(postBody))
+	h.Create(httptest.NewRecorder(), postReq)
+
+	putReq := httptest.NewRequest(http.MethodPut, "/courses/1", bytes.NewReader([]byte("not json")))
+	putReq.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	h.Update(w, putReq)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestUpdate_BadID(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	body, _ := json.Marshal(model.Course{Title: "Update Me", Xp: 67})
+	req := httptest.NewRequest(http.MethodPut, "/courses/abc", bytes.NewReader(body))
+	req.SetPathValue("id", "abc")
+	w := httptest.NewRecorder()
+	h.Update(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}

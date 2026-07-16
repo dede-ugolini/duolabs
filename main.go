@@ -27,9 +27,10 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /courses", courseHandler.GetAll)
+	mux.HandleFunc("POST /courses", courseHandler.Create)
 	mux.HandleFunc("GET /courses/{id}", courseHandler.GetByID)
 	mux.HandleFunc("DELETE /courses/{id}", courseHandler.Delete)
-	mux.HandleFunc("POST /courses", courseHandler.Create)
+	mux.HandleFunc("PUT /courses/{id}", courseHandler.Update)
 
 	log.Println("API running on :8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))

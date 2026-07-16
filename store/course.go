@@ -12,6 +12,7 @@ type CourseStore interface {
 	FindByID(id int) (model.Course, error)
 	Create(course *model.Course) error
 	Delete(id int) error
+	Update(course *model.Course, id int) error
 }
 
 type SQLiteCourseStore struct {
@@ -40,6 +41,17 @@ func (s *SQLiteCourseStore) Create(course *model.Course) error {
 
 func (s *SQLiteCourseStore) Delete(id int) error {
 	result := s.db.Delete(&model.Course{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *SQLiteCourseStore) Update(course *model.Course, id int) error {
+	result := s.db.Model(&model.Course{}).Where("id = ?", id).Updates(course)
 	if result.Error != nil {
 		return result.Error
 	}

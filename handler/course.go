@@ -67,17 +67,37 @@ func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *CourseHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if id <= 0 || err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid course id", http.StatusBadRequest)
 		return
 	}
 	err = h.Store.Delete(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *CourseHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if id <= 0 || err != nil {
+		http.Error(w, "invalid course id", http.StatusBadRequest)
+		return
+	}
+	var course model.Course
+	if err := json.NewDecoder(r.Body).Decode(&course); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if err := h.Store.Update(&course, id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+	}
+	_ = json.NewEncoder(w).Encode(course)
 }
