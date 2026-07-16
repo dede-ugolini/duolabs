@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 
 	"duolabs/handler"
@@ -71,6 +72,51 @@ func TestGetByID_BadID(t *testing.T) {
 	req.SetPathValue("id", "abc")
 	w := httptest.NewRecorder()
 	h.GetByID(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("Expected %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func TestDelete_Found(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+
+	body, _ := json.Marshal(model.Course{Title: "Delete Me", Xp: 10})
+	postReq := httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(body))
+	postW := httptest.NewRecorder()
+	h.Create(postW, postReq)
+
+	var created model.Course
+	json.NewDecoder(postW.Body).Decode(&created)
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/courses/"+strconv.Itoa(int(created.ID)), nil)
+	delReq.SetPathValue("id", strconv.Itoa(int(created.ID)))
+	delW := httptest.NewRecorder()
+	h.Delete(delW, delReq)
+
+	if delW.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", delW.Code)
+	}
+}
+
+func TestDelete_NotFound(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	req := httptest.NewRequest(http.MethodDelete, "/courses/9999", nil)
+	req.SetPathValue("id", "9999")
+	w := httptest.NewRecorder()
+	h.Delete(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("Expected %d, got %d", http.StatusNotFound, w.Code)
+	}
+}
+
+func TestDelete_BadID(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	req := httptest.NewRequest(http.MethodDelete, "/courses/abc", nil)
+	req.SetPathValue("id", "abc")
+	w := httptest.NewRecorder()
+	h.Delete(w, req)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("Expected %d, got %d", http.StatusBadRequest, w.Code)
