@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Duolabs API
+  description: API for managing courses
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8081
+
+paths:
+  /courses:
+    get:
+      summary: List all courses
+      operationId: getAllCourses
+      responses:
+        "200":
+          description: List of courses ordered by creation date descending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Course"
+    post:
+      summary: Create a new course
+      operationId: createCourse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCourseRequest"
+      responses:
+        "201":
+          description: Course created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          description: invalid JSON
+
+  /courses/{id}:
+    get:
+      summary: Get a course by ID
+      operationId: getCourseByID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Course found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          description: invalid course id
+        "404":
+          description: not found
+    put:
+      summary: Update a course
+      operationId: updateCourse
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCourseRequest"
+      responses:
+        "200":
+          description: Course updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Course"
+        "400":
+          description: invalid course id or invalid JSON
+        "404":
+          description: not found
+    delete:
+      summary: Delete a course
+      operationId: deleteCourse
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Course deleted
+        "400":
+          description: invalid course id
+        "404":
+          description: not found
+
+components:
+  schemas:
+    Course:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        xp:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateCourseRequest:
+      type: object
+      required:
+        - title
+        - xp
+      properties:
+        title:
+          type: string
+        xp:
+          type: integer
+
+    UpdateCourseRequest:
+      type: object
+      required:
+        - title
+        - xp
+      properties:
+        title:
+          type: string
+        xp:
+          type: integer
