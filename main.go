@@ -24,12 +24,18 @@ func main() {
 	if err := db.AutoMigrate(&model.User{}); err != nil {
 		log.Fatal(err)
 	}
+	if err := db.AutoMigrate(&model.Enrollment{}); err != nil {
+		log.Fatal(err)
+	}
 
 	courseStore := store.NewSQLiteCourseStore(db)
 	courseHandler := handler.NewCourseHandler(courseStore)
 
 	userStore := store.NewSQLiteUserStore(db)
 	userHandler := handler.NewUserHandler(userStore)
+
+	enrollmentStore := store.NewSQLiteEnrollmentStore(db)
+	enrollmentHandler := handler.NewEnrollmentHandler(enrollmentStore)
 
 	mux := http.NewServeMux()
 
@@ -41,6 +47,12 @@ func main() {
 
 	mux.HandleFunc("POST /register", userHandler.Register)
 	mux.HandleFunc("POST /login", userHandler.Login)
+
+	mux.HandleFunc("POST /enrollments", handler.AuthMiddleware(enrollmentHandler.Enroll))
+	mux.HandleFunc("DELETE /enrollments/{id}", handler.AuthMiddleware(enrollmentHandler.Unenroll))
+	mux.HandleFunc("GET /enrollments", enrollmentHandler.FindAll)
+	mux.HandleFunc("GET /enrollments/user/{user_id}", enrollmentHandler.FindByUser)
+	mux.HandleFunc("GET /enrollments/course/{course_id}", enrollmentHandler.FindByCourse)
 
 	log.Println("API running on :8081")
 	log.Fatal(http.ListenAndServe(":8081", mux))
