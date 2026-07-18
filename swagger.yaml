@@ -1,13 +1,55 @@
 openapi: 3.0.3
 info:
   title: Duolabs API
-  description: API for managing courses
+  description: API for managing courses, users, and enrollments
   version: 1.0.0
 
 servers:
   - url: http://localhost:8081
 
 paths:
+  /register:
+    post:
+      summary: Register a new user
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: invalid JSON
+
+  /login:
+    post:
+      summary: Login and get a JWT token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: invalid JSON
+        "401":
+          description: invalid credentials
+
   /courses:
     get:
       summary: List all courses
@@ -104,8 +146,136 @@ paths:
         "404":
           description: not found
 
+  /enrollments:
+    get:
+      summary: List all enrollments
+      operationId: getAllEnrollments
+      responses:
+        "200":
+          description: List of all enrollments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Enrollment"
+    post:
+      summary: Enroll in a course
+      operationId: enroll
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollRequest"
+      responses:
+        "201":
+          description: Enrolled successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrollment"
+        "400":
+          description: invalid JSON
+        "401":
+          description: unauthorized
+        "409":
+          description: already enrolled
+
+  /enrollments/{id}:
+    delete:
+      summary: Unenroll from a course
+      operationId: unenroll
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Unenrolled successfully
+        "400":
+          description: invalid enrollment id
+        "401":
+          description: unauthorized
+        "404":
+          description: not found
+
+  /enrollments/user/{user_id}:
+    get:
+      summary: List courses for a user
+      operationId: getEnrollmentsByUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of courses the user is enrolled in
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Course"
+        "400":
+          description: invalid user id
+
+  /enrollments/course/{course_id}:
+    get:
+      summary: List users enrolled in a course
+      operationId: getEnrollmentsByCourse
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of users enrolled in the course
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "400":
+          description: invalid course id
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
     Course:
       type: object
       properties:
@@ -125,6 +295,54 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    Enrollment:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        course_id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
 
     CreateCourseRequest:
       type: object
@@ -146,4 +364,12 @@ components:
         title:
           type: string
         xp:
+          type: integer
+
+    EnrollRequest:
+      type: object
+      required:
+        - course_id
+      properties:
+        course_id:
           type: integer
