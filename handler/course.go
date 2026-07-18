@@ -56,6 +56,10 @@ func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	if course.Difficulty != model.Beginner && course.Difficulty != model.Intermediate && course.Difficulty != model.Advanced {
+		http.Error(w, "invalid difficulty: must be beginner, intermediate, or advanced", http.StatusBadRequest)
+		return
+	}
 	if err := h.Store.Create(&course); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -31,7 +31,7 @@ func (s *SQLiteCourseStore) FindAll() ([]model.Course, error) {
 
 func (s *SQLiteCourseStore) FindByID(id int) (model.Course, error) {
 	var course model.Course
-	err := s.db.First(&course, id).Error
+	err := s.db.Preload("Units.Tasks.Lessons.Choices").First(&course, id).Error
 	return course, err
 }
 

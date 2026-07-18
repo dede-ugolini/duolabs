@@ -21,6 +21,18 @@ func main() {
 	if err := db.AutoMigrate(&model.Course{}); err != nil {
 		log.Fatal(err)
 	}
+	if err := db.AutoMigrate(&model.Unit{}); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Task{}); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Lesson{}); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Choice{}); err != nil {
+		log.Fatal(err)
+	}
 	if err := db.AutoMigrate(&model.User{}); err != nil {
 		log.Fatal(err)
 	}
