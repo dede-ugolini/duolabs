@@ -194,7 +194,7 @@ export default function App() {
           {!token ? (
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
               <h2 className="text-lg font-bold mb-4 text-gray-200">
-                {authMode === 'login' ? '🔑 Entrar' : '📝 Criar Conta'}
+                {authMode === 'login' ? 'Entrar' : 'Criar Conta'}
               </h2>
               <form onSubmit={handleAuth} className="space-y-4">
                 <div>
@@ -247,19 +247,19 @@ export default function App() {
                 onClick={() => setActiveTab('courses')}
                 className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'courses' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
               >
-                📚 Cursos Disponíveis
+                 Cursos Disponíveis
               </button>
               <button
                 onClick={() => setActiveTab('createCourse')}
                 className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'createCourse' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
               >
-                ➕ Novo Curso
+                 Novo Curso
               </button>
               <button
                 onClick={() => setActiveTab('enrollments')}
                 className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'enrollments' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
               >
-                🎓 Matrículas ({enrollments.length})
+                 Matrículas ({enrollments.length})
               </button>
             </div>
           </div>
