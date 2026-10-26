@@ -33,3 +33,6 @@ go.work.sum
 
 duolabs
 *.db
+.idea
+
+frontend/node_modules

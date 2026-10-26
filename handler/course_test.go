@@ -13,7 +13,7 @@ import (
 	"duolabs/model"
 	"duolabs/store"
 
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
