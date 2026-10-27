@@ -1,0 +1,22 @@
+.git
+.gitignore
+.idea
+.vscode
+
+# Built artifacts and local binaries
+duolabs
+frontend/dist
+
+# Dependencies are installed inside the image
+frontend/node_modules
+
+# Local database state must not end up in the image
+*.db
+*.db-shm
+*.db-wal
+duolabs_collection.json
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose.yml

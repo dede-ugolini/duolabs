@@ -1,0 +1,27 @@
+services:
+  duolabs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Leave empty so the frontend calls the same origin it is served from.
+        VITE_API_BASE: ""
+    image: duolabs:latest
+    container_name: duolabs
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: "8081"
+      DB_PATH: /data/duolabs.db
+    volumes:
+      - duolabs-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/courses"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  duolabs-data:

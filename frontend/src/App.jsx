@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:8081';
+// In dev the API runs separately on :8081; the production build is served by
+// the Go server itself, so it uses same-origin requests. Override with
+// VITE_API_BASE when the API lives elsewhere.
+const API_BASE =
+  import.meta.env.VITE_API_BASE ??
+  (import.meta.env.DEV ? 'http://localhost:8081' : '');
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('duolabs_token') || '');
