@@ -156,6 +156,65 @@ export default function App() {
     }
   };
 
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans items-center justify-center p-6">
+        <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-2xl">
+          <div className="flex flex-col items-center mb-8">
+            <span className="text-4xl font-black bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent mb-2">
+              Duolabs
+            </span>
+            <p className="text-gray-400 text-sm text-center">
+              {authMode === 'login' 
+                ? 'Faça login para acessar os laboratórios.' 
+                : 'Crie sua conta para começar a aprender.'}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Usuário</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                placeholder="Seu usuário"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Senha</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                placeholder="••••••••"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl text-sm transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-900/20"
+            >
+              {authMode === 'login' ? 'Entrar Agora' : 'Criar Conta'}
+            </button>
+          </form>
+
+          <div className="mt-8 pt-6 border-t border-gray-800 text-center">
+            <button
+              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
+              className="text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+            >
+              {authMode === 'login' ? 'Não tem uma conta? Cadastre-se' : 'Já possui uma conta? Acesse aqui'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans">
       {/* Header */}
@@ -169,77 +228,26 @@ export default function App() {
           </span>
         </div>
         <div className="flex items-center space-x-4">
-          {token ? (
-            <div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-300">Autenticado 🟢</span>
-              <button
-                onClick={handleLogout}
-                className="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-800 text-xs px-3 py-1.5 rounded-lg font-semibold transition"
-              >
-                Sair
-              </button>
-            </div>
-          ) : (
-            <span className="text-xs text-yellow-500 bg-yellow-950/50 border border-yellow-800/50 px-2.5 py-1 rounded-md">
-              Não autenticado (Faça login para matricular)
-            </span>
-          )}
+          <div className="flex items-center space-x-3">
+            <span className="text-sm text-gray-300">Autenticado 🟢</span>
+            <button
+              onClick={handleLogout}
+              className="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-800 text-xs px-3 py-1.5 rounded-lg font-semibold transition"
+            >
+              Sair
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <div className="flex flex-1 max-w-7xl w-full mx-auto p-6 gap-6">
-        {/* Sidebar / Auth panel */}
+        {/* Sidebar */}
         <div className="w-80 flex flex-col gap-6">
-          {!token ? (
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
-              <h2 className="text-lg font-bold mb-4 text-gray-200">
-                {authMode === 'login' ? 'Entrar' : 'Criar Conta'}
-              </h2>
-              <form onSubmit={handleAuth} className="space-y-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Usuário</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                    placeholder="ex: student1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Senha</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                    placeholder="••••••"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 rounded-lg text-sm transition shadow-lg shadow-emerald-900/20"
-                >
-                  {authMode === 'login' ? 'Entrar' : 'Cadastrar'}
-                </button>
-              </form>
-              <button
-                onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                className="mt-4 w-full text-xs text-emerald-400 hover:underline text-center block"
-              >
-                {authMode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça login'}
-              </button>
-            </div>
-          ) : (
-            <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-2xl p-5 shadow-xl">
-              <h2 className="text-sm font-bold text-emerald-400 mb-2">Sessão Ativa</h2>
-              <p className="text-xs text-gray-300">Você está logado e pronto para gerenciar matrículas.</p>
-            </div>
-          )}
-
+          <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-2xl p-5 shadow-xl">
+            <h2 className="text-sm font-bold text-emerald-400 mb-2">Sessão Ativa</h2>
+            <p className="text-xs text-gray-300">Você está logado e pronto para gerenciar matrículas.</p>
+          </div>
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
             <h3 className="text-sm font-bold mb-3 text-gray-300">Navegação</h3>
             <div className="flex flex-col gap-2">
