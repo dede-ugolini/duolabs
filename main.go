@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"duolabs/handler"
 	"duolabs/model"
@@ -13,7 +15,7 @@ import (
 )
 
 func main() {
-	db, err := gorm.Open(sqlite.Open("duolabs.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(envOr("DB_PATH", "duolabs.db")), &gorm.Config{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,8 +70,33 @@ func main() {
 	mux.HandleFunc("GET /enrollments/user/{user_id}", enrollmentHandler.FindByUser)
 	mux.HandleFunc("GET /enrollments/course/{course_id}", enrollmentHandler.FindByCourse)
 
-	log.Println("API running on :8081")
-	log.Fatal(http.ListenAndServe(":8081", corsMiddleware(mux)))
+	staticDir := envOr("STATIC_DIR", "static")
+	mux.HandleFunc("GET /", staticHandler(staticDir))
+
+	addr := ":" + envOr("PORT", "8081")
+	log.Printf("API running on %s (static files from %s)", addr, staticDir)
+	log.Fatal(http.ListenAndServe(addr, corsMiddleware(mux)))
+}
+
+// staticHandler serves the built frontend and falls back to index.html so that
+// client-side routing keeps working on deep links.
+func staticHandler(dir string) http.HandlerFunc {
+	fileServer := http.FileServer(http.Dir(dir))
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := filepath.Join(dir, filepath.Clean("/"+r.URL.Path))
+		if info, err := os.Stat(name); err == nil && !info.IsDir() {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+	}
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
