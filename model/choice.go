@@ -5,5 +5,6 @@ import "gorm.io/gorm"
 type Choice struct {
 	gorm.Model
 	Label    string `json:"label"`
+	Correct  bool   `json:"correct,omitempty"`
 	LessonID uint   `json:"lesson_id"`
 }

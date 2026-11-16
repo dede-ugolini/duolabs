@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"duolabs/model"
 	"duolabs/store"
@@ -46,8 +47,56 @@ func (h *CourseHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	w.WriteHeader(http.StatusFound)
+	if !IsAdminRequest(r) {
+		hideAnswers(&course)
+	}
 	_ = json.NewEncoder(w).Encode(course)
+}
+
+// hideAnswers removes the correct-answer markers so students cannot read them
+// from the course payload.
+func hideAnswers(course *model.Course) {
+	for u := range course.Units {
+		for t := range course.Units[u].Tasks {
+			for l := range course.Units[u].Tasks[t].Lessons {
+				lesson := &course.Units[u].Tasks[t].Lessons[l]
+				lesson.CorrectChoiceID = 0
+				for c := range lesson.Choices {
+					lesson.Choices[c].Correct = false
+				}
+			}
+		}
+	}
+}
+
+// validateLessons requires every lesson to have a question, at least two
+// choices and exactly one correct choice, so that it can always be graded.
+func validateLessons(course *model.Course) string {
+	for _, unit := range course.Units {
+		for _, task := range unit.Tasks {
+			for _, lesson := range task.Lessons {
+				if strings.TrimSpace(lesson.Question) == "" {
+					return "invalid lesson: question is required"
+				}
+				if len(lesson.Choices) < 2 {
+					return "invalid lesson " + strconv.Quote(lesson.Question) + ": at least 2 choices are required"
+				}
+				correct := 0
+				for _, choice := range lesson.Choices {
+					if strings.TrimSpace(choice.Label) == "" {
+						return "invalid lesson " + strconv.Quote(lesson.Question) + ": choice label is required"
+					}
+					if choice.Correct {
+						correct++
+					}
+				}
+				if correct != 1 {
+					return "invalid lesson " + strconv.Quote(lesson.Question) + ": exactly 1 correct choice is required"
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +107,10 @@ func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if course.Difficulty != model.Beginner && course.Difficulty != model.Intermediate && course.Difficulty != model.Advanced {
 		http.Error(w, "invalid difficulty: must be beginner, intermediate, or advanced", http.StatusBadRequest)
+		return
+	}
+	if msg := validateLessons(&course); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 	if err := h.Store.Create(&course); err != nil {

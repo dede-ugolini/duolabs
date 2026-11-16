@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import CoursePlayer from './components/CoursePlayer';
+import CourseEditor from './components/CourseEditor';
 
 // In dev the API runs separately on :8081; the production build is served by
 // the Go server itself, so it uses same-origin requests. Override with
@@ -7,22 +9,34 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ??
   (import.meta.env.DEV ? 'http://localhost:8081' : '');
 
+// Reads the claims from the JWT payload. Only used to adapt the UI (admin
+// buttons, which courses the user is enrolled in); the server enforces
+// the permissions.
+function claimsFromToken(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload));
+  } catch {
+    return {};
+  }
+}
+
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('duolabs_token') || '');
+  const claims = claimsFromToken(token);
+  const isAdmin = claims.role === 'admin';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   
   const [courses, setCourses] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
-  const [activeTab, setActiveTab] = useState('courses'); // 'courses', 'enrollments', 'createCourse'
+  const [activeTab, setActiveTab] = useState('courses'); // 'courses', 'enrollments', 'createCourse', 'play'
+  const [playingCourse, setPlayingCourse] = useState(null);
 
-  // New Course Form state
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newCategory, setNewCategory] = useState('');
-  const [newDifficulty, setNewDifficulty] = useState('beginner');
-  const [newXp, setNewXp] = useState(500);
+  const enrolledCourseIds = new Set(
+    enrollments.filter((en) => en.user_id === claims.user_id).map((en) => en.course_id)
+  );
 
   useEffect(() => {
     fetchCourses();
@@ -38,7 +52,9 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: username, password })
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data = {};
+      try { data = JSON.parse(raw); } catch { data = { error: raw.trim() }; }
       if (!res.ok) throw new Error(data.error || 'Erro na autenticação');
       
       if (authMode === 'login') {
@@ -56,6 +72,8 @@ export default function App() {
 
   const handleLogout = () => {
     setToken('');
+    setActiveTab('courses');
+    setPlayingCourse(null);
     localStorage.removeItem('duolabs_token');
   };
 
@@ -79,38 +97,41 @@ export default function App() {
     }
   };
 
-  const handleCreateCourse = async (e) => {
-    e.preventDefault();
+  const handleCreateCourse = async (payload) => {
     try {
-      const payload = {
-        title: newTitle,
-        description: newDesc,
-        category: newCategory,
-        difficulty: newDifficulty,
-        xp: parseInt(newXp),
-        units: []
-      };
       const res = await fetch(`${API_BASE}/courses`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(payload)
       });
-      if (!res.ok) throw new Error('Erro ao criar curso');
+      if (res.status === 401 || res.status === 403) throw new Error('Apenas administradores podem criar cursos');
+      if (!res.ok) throw new Error((await res.text()).trim() || 'Erro ao criar curso');
       alert('Curso criado com sucesso!');
-      setNewTitle('');
-      setNewDesc('');
-      setNewCategory('');
       setActiveTab('courses');
       fetchCourses();
+      return true;
     } catch (err) {
       alert(err.message);
+      return false;
     }
+  };
+
+  const handlePlay = (course) => {
+    setPlayingCourse(course);
+    setActiveTab('play');
   };
 
   const handleDeleteCourse = async (id) => {
     if (!confirm('Deseja realmente deletar este curso?')) return;
     try {
-      const res = await fetch(`${API_BASE}/courses/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/courses/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.status === 401 || res.status === 403) throw new Error('Apenas administradores podem deletar cursos');
       if (!res.ok) throw new Error('Erro ao deletar curso');
       fetchCourses();
     } catch (err) {
@@ -234,7 +255,7 @@ export default function App() {
         </div>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-3">
-            <span className="text-sm text-gray-300">Autenticado 🟢</span>
+            <span className="text-sm text-gray-300">{isAdmin ? 'Administrador 🛡️' : 'Autenticado 🟢'}</span>
             <button
               onClick={handleLogout}
               className="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-800 text-xs px-3 py-1.5 rounded-lg font-semibold transition"
@@ -251,7 +272,11 @@ export default function App() {
         <div className="w-80 flex flex-col gap-6">
           <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-2xl p-5 shadow-xl">
             <h2 className="text-sm font-bold text-emerald-400 mb-2">Sessão Ativa</h2>
-            <p className="text-xs text-gray-300">Você está logado e pronto para gerenciar matrículas.</p>
+            <p className="text-xs text-gray-300">
+              {isAdmin
+                ? 'Você é administrador: pode criar e remover cursos.'
+                : 'Você está logado e pronto para fazer cursos.'}
+            </p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-xl">
             <h3 className="text-sm font-bold mb-3 text-gray-300">Navegação</h3>
@@ -262,12 +287,14 @@ export default function App() {
               >
                  Cursos Disponíveis
               </button>
-              <button
-                onClick={() => setActiveTab('createCourse')}
-                className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'createCourse' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
-              >
-                 Novo Curso
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setActiveTab('createCourse')}
+                  className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'createCourse' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
+                >
+                   Novo Curso
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('enrollments')}
                 className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'enrollments' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
@@ -279,7 +306,7 @@ export default function App() {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl">
+        <div className="flex-1 min-w-0 bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl">
           {activeTab === 'courses' && (
             <div>
               <div className="flex justify-between items-center mb-6">
@@ -314,18 +341,29 @@ export default function App() {
                       <div className="flex items-center justify-between pt-3 border-t border-gray-900">
                         <span className="text-xs text-gray-500 capitalize">Dificuldade: {course.difficulty}</span>
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEnroll(course.ID)}
-                            className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-800 text-xs px-3 py-1.5 rounded-lg font-semibold transition"
-                          >
-                            Matricular
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCourse(course.ID)}
-                            className="bg-red-950/40 hover:bg-red-900/50 text-red-400 border border-red-900/60 text-xs px-3 py-1.5 rounded-lg transition"
-                          >
-                            Deletar
-                          </button>
+                          {enrolledCourseIds.has(course.ID) ? (
+                            <button
+                              onClick={() => handlePlay(course)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg font-semibold transition"
+                            >
+                              Fazer curso
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleEnroll(course.ID)}
+                              className="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-800 text-xs px-3 py-1.5 rounded-lg font-semibold transition"
+                            >
+                              Matricular
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteCourse(course.ID)}
+                              className="bg-red-950/40 hover:bg-red-900/50 text-red-400 border border-red-900/60 text-xs px-3 py-1.5 rounded-lg transition"
+                            >
+                              Deletar
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -335,75 +373,19 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'createCourse' && (
-            <div>
-              <h2 className="text-xl font-bold text-gray-100 mb-6">Criar Novo Curso</h2>
-              <form onSubmit={handleCreateCourse} className="space-y-4 max-w-lg">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Título</label>
-                  <input
-                    type="text"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    required
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                    placeholder="Ex: Rust para Iniciantes"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Descrição</label>
-                  <textarea
-                    value={newDesc}
-                    onChange={(e) => setNewDesc(e.target.value)}
-                    required
-                    rows="3"
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                    placeholder="Resumo do curso..."
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Categoria</label>
-                    <input
-                      type="text"
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      required
-                      className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                      placeholder="Programação"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Dificuldade</label>
-                    <select
-                      value={newDifficulty}
-                      onChange={(e) => setNewDifficulty(e.target.value)}
-                      className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                    >
-                      <option value="beginner">Beginner</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advanced">Advanced</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">XP</label>
-                  <input
-                    type="number"
-                    value={newXp}
-                    onChange={(e) => setNewXp(e.target.value)}
-                    required
-                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 py-2 rounded-lg text-sm transition shadow-lg shadow-emerald-900/20"
-                >
-                  Salvar Curso
-                </button>
-              </form>
-            </div>
+          {activeTab === 'createCourse' && isAdmin && (
+            <CourseEditor onSubmit={handleCreateCourse} />
+          )}
+
+          {activeTab === 'play' && playingCourse && (
+            <CoursePlayer
+              key={playingCourse.ID}
+              apiBase={API_BASE}
+              token={token}
+              course={playingCourse}
+              onClose={() => setActiveTab('courses')}
+              onProgressChange={fetchEnrollments}
+            />
           )}
 
           {activeTab === 'enrollments' && (

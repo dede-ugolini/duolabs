@@ -50,8 +50,8 @@ func TestGetByID_Found(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.GetByID(w, req)
 
-	if w.Code != http.StatusFound {
-		t.Fatalf("Expected %d, got %d", http.StatusFound, w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected %d, got %d", http.StatusOK, w.Code)
 	}
 }
 
@@ -336,7 +336,7 @@ func TestCreateCourse_Nested(t *testing.T) {
 								Question:        "What prints hello?",
 								CorrectChoiceID: 1,
 								Choices: []model.Choice{
-									{Label: "fmt.Println"},
+									{Label: "fmt.Println", Correct: true},
 									{Label: "fmt.Print"},
 									{Label: "println"},
 								},
@@ -406,7 +406,7 @@ func TestGetCourse_Nested(t *testing.T) {
 								Question:        "Q1?",
 								CorrectChoiceID: 1,
 								Choices: []model.Choice{
-									{Label: "A"},
+									{Label: "A", Correct: true},
 									{Label: "B"},
 								},
 							},
@@ -430,8 +430,8 @@ func TestGetCourse_Nested(t *testing.T) {
 	getW := httptest.NewRecorder()
 	h.GetByID(getW, getReq)
 
-	if getW.Code != http.StatusFound {
-		t.Fatalf("expected 302, got %d", getW.Code)
+	if getW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getW.Code)
 	}
 
 	var got model.Course

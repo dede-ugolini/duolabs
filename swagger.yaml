@@ -27,6 +27,8 @@ paths:
                 $ref: "#/components/schemas/User"
         "400":
           description: invalid JSON
+        "409":
+          description: name already taken
 
   /login:
     post:
@@ -66,6 +68,9 @@ paths:
     post:
       summary: Create a new course
       operationId: createCourse
+      description: Admin only.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -81,6 +86,10 @@ paths:
                 $ref: "#/components/schemas/Course"
         "400":
           description: invalid JSON
+        "401":
+          description: unauthorized
+        "403":
+          description: forbidden (admin only)
 
   /courses/{id}:
     get:
@@ -106,6 +115,9 @@ paths:
     put:
       summary: Update a course
       operationId: updateCourse
+      description: Admin only.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -127,11 +139,18 @@ paths:
                 $ref: "#/components/schemas/Course"
         "400":
           description: invalid course id or invalid JSON
+        "401":
+          description: unauthorized
+        "403":
+          description: forbidden (admin only)
         "404":
           description: not found
     delete:
       summary: Delete a course
       operationId: deleteCourse
+      description: Admin only.
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -143,8 +162,70 @@ paths:
           description: Course deleted
         "400":
           description: invalid course id
+        "401":
+          description: unauthorized
+        "403":
+          description: forbidden (admin only)
         "404":
           description: not found
+
+  /courses/{id}/progress:
+    get:
+      summary: Progress of the authenticated user in a course
+      operationId: getCourseProgress
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lessons completed so far
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CourseProgress"
+        "401":
+          description: unauthorized
+        "404":
+          description: not found
+
+  /lessons/{id}/answer:
+    post:
+      summary: Answer a lesson (the user must be enrolled in its course)
+      operationId: answerLesson
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswerRequest"
+      responses:
+        "200":
+          description: Graded answer. A correct answer completes the lesson for good.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnswerResponse"
+        "400":
+          description: invalid JSON or choice that does not belong to the lesson
+        "401":
+          description: unauthorized
+        "403":
+          description: not enrolled in this course
+        "404":
+          description: lesson not found
 
   /enrollments:
     get:
@@ -265,6 +346,9 @@ components:
           type: integer
         name:
           type: string
+        role:
+          type: string
+          enum: [admin, user]
         created_at:
           type: string
           format: date-time
@@ -295,6 +379,11 @@ components:
           type: string
           format: date-time
           nullable: true
+        units:
+          type: array
+          description: Only returned by GET /courses/{id}
+          items:
+            $ref: "#/components/schemas/Unit"
 
     Enrollment:
       type: object
@@ -354,6 +443,11 @@ components:
           type: string
         xp:
           type: integer
+        units:
+          type: array
+          description: Optional content tree (units > tasks > lessons > choices)
+          items:
+            $ref: "#/components/schemas/Unit"
 
     UpdateCourseRequest:
       type: object
@@ -373,3 +467,78 @@ components:
       properties:
         course_id:
           type: integer
+    CourseProgress:
+      type: object
+      properties:
+        course_id:
+          type: integer
+        total_lessons:
+          type: integer
+        completed_lessons:
+          type: integer
+        completed:
+          type: boolean
+        xp_earned:
+          type: integer
+          description: The course xp once every lesson is completed, otherwise 0
+        completed_lesson_ids:
+          type: array
+          items:
+            type: integer
+    AnswerRequest:
+      type: object
+      required: [choice_id]
+      properties:
+        choice_id:
+          type: integer
+    AnswerResponse:
+      type: object
+      properties:
+        correct:
+          type: boolean
+    Choice:
+      type: object
+      required: [label]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        correct:
+          type: boolean
+          description: Input for admins. Only returned by GET /courses/{id} to admins; omitted for everyone else.
+    Lesson:
+      type: object
+      required: [question, choices]
+      description: Needs at least 2 choices and exactly 1 with correct=true.
+      properties:
+        id:
+          type: integer
+        question:
+          type: string
+        choices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Choice"
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        lessons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Lesson"
+    Unit:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"

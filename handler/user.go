@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 var jwtSecret = []byte("duolabs-secret")
@@ -54,12 +56,19 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	if _, err := h.store.FindByName(body.Name); err == nil {
+		http.Error(w, "name already taken", http.StatusConflict)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	user := model.User{Name: body.Name, Password: string(hash)}
+	user := model.User{Name: body.Name, Password: string(hash), Role: model.RoleUser}
 	if err := h.store.Create(&user); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -89,6 +98,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": user.ID,
 		"name":    user.Name,
+		"role":    user.Role,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
 	tokenString, err := token.SignedString(jwtSecret)
@@ -98,4 +108,24 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+}
+
+
+// EnsureAdmin creates the admin account, or resets an existing account with
+// that name to the given password and the admin role. Run on every startup.
+func EnsureAdmin(s store.UserStore, name, password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user, err := s.FindByName(name)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.Create(&model.User{Name: name, Password: string(hash), Role: model.RoleAdmin})
+	}
+	if err != nil {
+		return err
+	}
+	user.Password = string(hash)
+	user.Role = model.RoleAdmin
+	return s.Save(user)
 }

@@ -10,6 +10,7 @@ type UserStore interface {
 	FindAll() ([]model.User, error)
 	FindByName(name string) (*model.User, error)
 	Create(*model.User) error
+	Save(*model.User) error
 }
 
 type SQLiteUserStore struct {
@@ -34,4 +35,9 @@ func (s *SQLiteUserStore) FindByName(name string) (*model.User, error) {
 
 func (s *SQLiteUserStore) Create(user *model.User) error {
 	return s.db.Create(user).Error
+}
+
+
+func (s *SQLiteUserStore) Save(user *model.User) error {
+	return s.db.Save(user).Error
 }
