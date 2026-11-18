@@ -333,8 +333,7 @@ func TestCreateCourse_Nested(t *testing.T) {
 						Title: "Hello World",
 						Lessons: []model.Lesson{
 							{
-								Question:        "What prints hello?",
-								CorrectChoiceID: 1,
+								Question: "What prints hello?",
 								Choices: []model.Choice{
 									{Label: "fmt.Println", Correct: true},
 									{Label: "fmt.Print"},
@@ -403,8 +402,7 @@ func TestGetCourse_Nested(t *testing.T) {
 						Title: "Task 1",
 						Lessons: []model.Lesson{
 							{
-								Question:        "Q1?",
-								CorrectChoiceID: 1,
+								Question: "Q1?",
 								Choices: []model.Choice{
 									{Label: "A", Correct: true},
 									{Label: "B"},
@@ -450,5 +448,85 @@ func TestGetCourse_Nested(t *testing.T) {
 	}
 	if len(got.Units[0].Tasks[0].Lessons[0].Choices) != 2 {
 		t.Fatalf("expected 2 choices, got %d", len(got.Units[0].Tasks[0].Lessons[0].Choices))
+	}
+}
+
+func TestGetByID_ZeroID(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	req := httptest.NewRequest(http.MethodGet, "/courses/0", nil)
+	req.SetPathValue("id", "0")
+	w := httptest.NewRecorder()
+	h.GetByID(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+func nestedCourse() model.Course {
+	return model.Course{
+		Title:      "Nested",
+		Difficulty: model.Beginner,
+		Xp:         10,
+		Units: []model.Unit{{
+			Title: "Unit",
+			Tasks: []model.Task{{
+				Title: "Task",
+				Lessons: []model.Lesson{{
+					Question: "Q?",
+					Choices:  []model.Choice{{Label: "A", Correct: true}, {Label: "B"}},
+				}},
+			}},
+		}},
+	}
+}
+
+func TestUpdate_KeepsContentAndDoesNotDuplicateUnits(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	postBody, _ := json.Marshal(nestedCourse())
+	if w := httptest.NewRecorder(); true {
+		h.Create(w, httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(postBody)))
+		if w.Code != http.StatusCreated {
+			t.Fatalf("create: expected %d, got %d", http.StatusCreated, w.Code)
+		}
+	}
+
+	updated := nestedCourse()
+	updated.Title = "Renamed"
+	putBody, _ := json.Marshal(updated)
+	putReq := httptest.NewRequest(http.MethodPut, "/courses/1", bytes.NewReader(putBody))
+	putReq.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	h.Update(w, putReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update: expected %d, got %d", http.StatusOK, w.Code)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/courses/1", nil)
+	getReq.SetPathValue("id", "1")
+	w = httptest.NewRecorder()
+	h.GetByID(w, getReq)
+	var got model.Course
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.Title != "Renamed" {
+		t.Fatalf("expected title %q, got %q", "Renamed", got.Title)
+	}
+	if len(got.Units) != 1 {
+		t.Fatalf("expected 1 unit after update, got %d", len(got.Units))
+	}
+}
+
+func TestUpdate_InvalidDifficulty(t *testing.T) {
+	h := handler.NewCourseHandler(setupTestStore(t))
+	postBody, _ := json.Marshal(model.Course{Title: "Update Me", Difficulty: model.Beginner, Xp: 67})
+	h.Create(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/courses", bytes.NewReader(postBody)))
+
+	putReq := httptest.NewRequest(http.MethodPut, "/courses/1", bytes.NewReader([]byte(`{"title":"x","difficulty":"godlike"}`)))
+	putReq.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	h.Update(w, putReq)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected %d, got %d", http.StatusBadRequest, w.Code)
 	}
 }

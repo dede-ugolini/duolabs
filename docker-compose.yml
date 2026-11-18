@@ -13,6 +13,10 @@ services:
     environment:
       PORT: "8081"
       DB_PATH: /data/duolabs.db
+      # Set both in your shell or a .env file; empty falls back to the
+      # insecure development defaults (see README).
+      JWT_SECRET: "${JWT_SECRET:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
     volumes:
       - duolabs-data:/data
     restart: unless-stopped

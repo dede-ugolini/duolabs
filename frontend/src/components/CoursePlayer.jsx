@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { getCourse, getProgress, submitAnswer } from '../api';
 
 function flattenLessons(course) {
   const lessons = [];
@@ -21,15 +22,10 @@ function shuffle(items) {
   return arr;
 }
 
-async function apiError(res, fallback) {
-  const msg = (await res.text()).trim();
-  return msg || fallback;
-}
-
 const primaryButton =
   'bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 py-2 rounded-lg text-sm transition';
 
-export default function CoursePlayer({ apiBase, token, course, onClose, onProgressChange }) {
+export default function CoursePlayer({ token, course, onClose, onProgressChange }) {
   const [lessons, setLessons] = useState([]);
   const [completed, setCompleted] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
@@ -47,15 +43,11 @@ export default function CoursePlayer({ apiBase, token, course, onClose, onProgre
       setLoading(true);
       setLoadError('');
       try {
-        const headers = { Authorization: `Bearer ${token}` };
-        const [courseRes, progressRes] = await Promise.all([
-          fetch(`${apiBase}/courses/${course.ID}`),
-          fetch(`${apiBase}/courses/${course.ID}/progress`, { headers })
+        const [courseData, progress] = await Promise.all([
+          getCourse(course.ID),
+          getProgress(token, course.ID)
         ]);
-        if (!courseRes.ok) throw new Error(await apiError(courseRes, 'Erro ao carregar curso'));
-        if (!progressRes.ok) throw new Error(await apiError(progressRes, 'Erro ao carregar progresso'));
-        const flat = flattenLessons(await courseRes.json());
-        const progress = await progressRes.json();
+        const flat = flattenLessons(courseData);
         const doneIds = new Set(progress.completed_lesson_ids || []);
         const first = flat.findIndex((l) => !doneIds.has(l.ID));
         if (!active) return;
@@ -73,7 +65,7 @@ export default function CoursePlayer({ apiBase, token, course, onClose, onProgre
     return () => {
       active = false;
     };
-  }, [apiBase, course.ID, token]);
+  }, [course.ID, token]);
 
   const lesson = lessons[index];
   const choices = useMemo(() => shuffle(lesson?.choices || []), [lesson?.ID]);
@@ -93,17 +85,7 @@ export default function CoursePlayer({ apiBase, token, course, onClose, onProgre
     setSubmitting(true);
     setMessage('');
     try {
-      const res = await fetch(`${apiBase}/lessons/${lesson.ID}/answer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ choice_id: selected })
-      });
-      if (res.status === 403) throw new Error('Matricule-se neste curso para responder.');
-      if (!res.ok) throw new Error(await apiError(res, 'Erro ao enviar resposta'));
-      const data = await res.json();
+      const data = await submitAnswer(token, lesson.ID, selected);
       if (data.correct) {
         setResult('correct');
         setCompleted((prev) => new Set(prev).add(lesson.ID));
@@ -112,7 +94,7 @@ export default function CoursePlayer({ apiBase, token, course, onClose, onProgre
         setResult('wrong');
       }
     } catch (err) {
-      setMessage(err.message);
+      setMessage(err.status === 403 ? 'Matricule-se neste curso para responder.' : err.message);
     } finally {
       setSubmitting(false);
     }

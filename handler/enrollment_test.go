@@ -152,13 +152,8 @@ func TestUnenroll_Success(t *testing.T) {
 	db.Create(&enrollment)
 
 	h := handler.NewEnrollmentHandler(s)
-	req := httptest.NewRequest(http.MethodDelete, "/enrollments/"+itoa(enrollment.ID), nil)
-	req.SetPathValue("id", itoa(enrollment.ID))
-	w := httptest.NewRecorder()
-	h.Unenroll(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", w.Code)
+	if code := unenrollAs(t, h, generateToken(t, user.ID, "charlie"), enrollment.ID); code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", code)
 	}
 }
 
@@ -166,13 +161,8 @@ func TestUnenroll_NotFound(t *testing.T) {
 	s := setupTestEnrollmentStore(t)
 	h := handler.NewEnrollmentHandler(s)
 
-	req := httptest.NewRequest(http.MethodDelete, "/enrollments/99999", nil)
-	req.SetPathValue("id", "99999")
-	w := httptest.NewRecorder()
-	h.Unenroll(w, req)
-
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", w.Code)
+	if code := unenrollAs(t, h, generateToken(t, 1, "someone"), 99999); code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", code)
 	}
 }
 
@@ -257,4 +247,71 @@ func TestGetAllEnrollments(t *testing.T) {
 
 func itoa(n uint) string {
 	return strconv.Itoa(int(n))
+}
+
+func TestEnroll_UnknownCourse(t *testing.T) {
+	s, db := setupTestEnrollmentDB(t)
+	user := model.User{Name: "alice", Password: "hash"}
+	db.Create(&user)
+
+	h := handler.NewEnrollmentHandler(s)
+	body, _ := json.Marshal(map[string]uint{"course_id": 999})
+	req := httptest.NewRequest(http.MethodPost, "/enrollments", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+generateToken(t, user.ID, "alice"))
+	w := httptest.NewRecorder()
+	handler.AuthMiddleware(h.Enroll)(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func unenrollAs(t *testing.T, h *handler.EnrollmentHandler, token string, enrollmentID uint) int {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodDelete, "/enrollments/"+itoa(enrollmentID), nil)
+	req.SetPathValue("id", itoa(enrollmentID))
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	handler.AuthMiddleware(h.Unenroll)(w, req)
+	return w.Code
+}
+
+func TestUnenroll_OnlyOwnerOrAdmin(t *testing.T) {
+	s, db := setupTestEnrollmentDB(t)
+	admin := model.User{Name: "root", Password: "hash"}
+	owner := model.User{Name: "owner", Password: "hash"}
+	other := model.User{Name: "other", Password: "hash"}
+	db.Create(&admin)
+	db.Create(&owner)
+	db.Create(&other)
+	course := model.Course{Title: "Go 404", Xp: 100}
+	db.Create(&course)
+	h := handler.NewEnrollmentHandler(s)
+
+	enroll := func() uint {
+		e := model.Enrollment{UserID: owner.ID, CourseID: course.ID}
+		db.Create(&e)
+		return e.ID
+	}
+
+	if code := unenrollAs(t, h, "", enroll()); code != http.StatusUnauthorized {
+		t.Fatalf("anonymous: expected 401, got %d", code)
+	}
+	if code := unenrollAs(t, h, generateToken(t, other.ID, "other"), enroll()); code != http.StatusForbidden {
+		t.Fatalf("other user: expected 403, got %d", code)
+	}
+	if code := unenrollAs(t, h, generateToken(t, owner.ID, "owner"), enroll()); code != http.StatusNoContent {
+		t.Fatalf("owner: expected 204, got %d", code)
+	}
+	adminToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": admin.ID,
+		"role":    model.RoleAdmin,
+		"exp":     time.Now().Add(time.Hour).Unix(),
+	})
+	signed, _ := adminToken.SignedString(testJWTSecret)
+	if code := unenrollAs(t, h, signed, enroll()); code != http.StatusNoContent {
+		t.Fatalf("admin: expected 204, got %d", code)
+	}
 }

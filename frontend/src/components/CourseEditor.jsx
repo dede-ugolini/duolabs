@@ -1,198 +1,90 @@
-import React, { useState, useRef } from 'react';
+import { useState } from 'react';
+import { Input, Textarea, Select, Button } from './ui';
+import {
+  DEFAULT_XP,
+  buildPayload,
+  dropChoice,
+  emptyChoice,
+  emptyLesson,
+  emptyModule,
+  emptyTask,
+  validateCourse
+} from '../courseForm';
 
-const fieldClass =
-  'w-full bg-gray-950 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500';
+// Helpers to change one item of a list without mutating state.
+const mapById = (items, id, change) => items.map((item) => (item.id === id ? change(item) : item));
+const without = (items, id) => items.filter((item) => item.id !== id);
 
-function Input({ label, wrapperClassName = '', ...props }) {
-  return (
-    <div className={`w-full ${wrapperClassName}`}>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      <input className={fieldClass} {...props} />
-    </div>
-  );
-}
-
-function Textarea({ label, wrapperClassName = '', rows = 3, ...props }) {
-  return (
-    <div className={`w-full ${wrapperClassName}`}>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      <textarea rows={rows} className={fieldClass} {...props} />
-    </div>
-  );
-}
-
-function Select({ label, wrapperClassName = '', ...props }) {
-  return (
-    <div className={`w-full ${wrapperClassName}`}>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
-      <select className={fieldClass} {...props}>
-        <option value="beginner">Beginner</option>
-        <option value="intermediate">Intermediate</option>
-        <option value="advanced">Advanced</option>
-      </select>
-    </div>
-  );
-}
-
-const buttonVariants = {
-  emerald: 'bg-emerald-600 hover:bg-emerald-500 text-white',
-  outline: 'bg-gray-950 border border-gray-700 text-gray-300 hover:border-gray-500',
-  danger: 'bg-red-950/40 hover:bg-red-900/50 text-red-400 border border-red-900/60'
-};
-
-function Button({ children, variant = 'emerald', className = '', ...props }) {
-  return (
-    <button
-      type="button"
-      className={`px-4 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${buttonVariants[variant]} ${className}`}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-function dropChoice(choices, choiceId) {
-  const rest = choices.filter(c => c.id !== choiceId);
-  return rest.some(c => c.correct) ? rest : rest.map((c, i) => ({ ...c, correct: i === 0 }));
-}
-
+// Form where the admin builds a course: Course > Modules > Tasks > Lessons >
+// Choices. `onSubmit(payload)` must resolve to true when the course was saved.
 export default function CourseEditor({ onSubmit }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [difficulty, setDifficulty] = useState('beginner');
-  const [xp, setXp] = useState(500);
+  const [xp, setXp] = useState(DEFAULT_XP);
   const [units, setUnits] = useState([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const idCounter = useRef(0);
 
-  const newId = () => {
-    idCounter.current += 1;
-    return idCounter.current;
-  };
+  // Each level is nested in the previous one, so editing a lesson means
+  // rebuilding module -> task -> lesson. These three do that once; everything
+  // below just says what to change.
+  const changeModule = (moduleId, change) => setUnits((prev) => mapById(prev, moduleId, change));
+  const changeTask = (moduleId, taskId, change) =>
+    changeModule(moduleId, (m) => ({ ...m, tasks: mapById(m.tasks, taskId, change) }));
+  const changeLesson = (moduleId, taskId, lessonId, change) =>
+    changeTask(moduleId, taskId, (t) => ({ ...t, lessons: mapById(t.lessons, lessonId, change) }));
 
-  const emptyModule = () => ({
-    id: newId(),
-    title: '',
-    tasks: [emptyTask()]
-  });
+  const addModule = () => setUnits((prev) => [...prev, emptyModule()]);
+  const removeModule = (moduleId) => setUnits((prev) => without(prev, moduleId));
+  const setModuleTitle = (moduleId, value) => changeModule(moduleId, (m) => ({ ...m, title: value }));
 
-  const emptyTask = () => ({
-    id: newId(),
-    title: '',
-    lessons: [emptyLesson()]
-  });
+  const addTask = (moduleId) =>
+    changeModule(moduleId, (m) => ({ ...m, tasks: [...m.tasks, emptyTask()] }));
+  const removeTask = (moduleId, taskId) =>
+    changeModule(moduleId, (m) => ({ ...m, tasks: without(m.tasks, taskId) }));
+  const setTaskTitle = (moduleId, taskId, value) =>
+    changeTask(moduleId, taskId, (t) => ({ ...t, title: value }));
 
-  const emptyLesson = () => ({
-    id: newId(),
-    question: '',
-    choices: [
-      { id: newId(), label: '', correct: true },
-      { id: newId(), label: '', correct: false }
-    ]
-  });
+  const addLesson = (moduleId, taskId) =>
+    changeTask(moduleId, taskId, (t) => ({ ...t, lessons: [...t.lessons, emptyLesson()] }));
+  const removeLesson = (moduleId, taskId, lessonId) =>
+    changeTask(moduleId, taskId, (t) => ({ ...t, lessons: without(t.lessons, lessonId) }));
+  const setQuestion = (moduleId, taskId, lessonId, value) =>
+    changeLesson(moduleId, taskId, lessonId, (l) => ({ ...l, question: value }));
 
-  const addModule = () => setUnits(prev => [...prev, emptyModule()]);
-
-  const removeModule = (moduleId) => setUnits(prev => prev.filter(m => m.id !== moduleId));
-
-  const updateModuleTitle = (moduleId, value) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, title: value } : m));
-
-  const addTask = (moduleId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: [...m.tasks, emptyTask()] } : m));
-
-  const removeTask = (moduleId, taskId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.filter(t => t.id !== taskId) } : m));
-
-  const updateTaskTitle = (moduleId, taskId, value) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, title: value } : t) } : m));
-
-  const addLesson = (moduleId, taskId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: [...t.lessons, emptyLesson()] } : t) } : m));
-
-  const removeLesson = (moduleId, taskId, lessonId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: t.lessons.filter(l => l.id !== lessonId) } : t) } : m));
-
-  const updateLessonQuestion = (moduleId, taskId, lessonId, value) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: t.lessons.map(l => l.id === lessonId ? { ...l, question: value } : l) } : t) } : m));
-
-  const addChoice = (moduleId, taskId, lessonId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: t.lessons.map(l => l.id === lessonId ? { ...l, choices: [...l.choices, { id: newId(), label: '', correct: false }] } : l) } : t) } : m));
-
-  const removeChoice = (moduleId, taskId, lessonId, choiceId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: t.lessons.map(l => l.id === lessonId ? { ...l, choices: dropChoice(l.choices, choiceId) } : l) } : t) } : m));
-
-  const updateChoice = (moduleId, taskId, lessonId, choiceId, field, value) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: t.lessons.map(l => l.id === lessonId ? { ...l, choices: l.choices.map(c => c.id === choiceId ? { ...c, [field]: value } : c) } : l) } : t) } : m));
-
-  const setCorrectChoice = (moduleId, taskId, lessonId, choiceId) => setUnits(prev => prev.map(m => m.id === moduleId ? { ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, lessons: t.lessons.map(l => l.id === lessonId ? { ...l, choices: l.choices.map(c => ({ ...c, correct: c.id === choiceId })) } : l) } : t) } : m));
-
-  const validate = () => {
-    const t = title.trim();
-    const d = description.trim();
-    const c = category.trim();
-    if (!t) return 'Informe o título do curso.';
-    if (!d) return 'Informe a descrição do curso.';
-    if (!c) return 'Informe a categoria do curso.';
-
-    for (let mi = 0; mi < units.length; mi++) {
-      const m = units[mi];
-      const mTitle = m.title.trim();
-      if (!mTitle) return `Módulo ${mi + 1}: informe o título do módulo.`;
-
-      for (let ti = 0; ti < m.tasks.length; ti++) {
-        const task = m.tasks[ti];
-        const taskTitle = task.title.trim();
-        if (!taskTitle) return `Módulo ${mi + 1} · Tarefa ${ti + 1}: informe o título da tarefa.`;
-
-        for (let li = 0; li < task.lessons.length; li++) {
-          const lesson = task.lessons[li];
-          const q = lesson.question.trim();
-          if (!q) return `Módulo ${mi + 1} · Tarefa ${ti + 1} · Lição ${li + 1}: informe a pergunta.`;
-          if (lesson.choices.length < 2) return `Módulo ${mi + 1} · Tarefa ${ti + 1} · Lição ${li + 1}: mínimo 2 alternativas.`;
-          let correctCount = 0;
-          for (let ci = 0; ci < lesson.choices.length; ci++) {
-            const choice = lesson.choices[ci];
-            if (!choice.label.trim()) return `Módulo ${mi + 1} · Tarefa ${ti + 1} · Lição ${li + 1} · Alternativa ${ci + 1}: informe o texto da alternativa.`;
-            if (choice.correct) correctCount++;
-          }
-          if (correctCount !== 1) return `Módulo ${mi + 1} · Tarefa ${ti + 1} · Lição ${li + 1}: marque exatamente uma alternativa como correta.`;
-        }
-      }
-    }
-    return null;
-  };
-
-  const buildPayload = () => ({
-    title: title.trim(),
-    description: description.trim(),
-    category: category.trim(),
-    difficulty,
-    xp: parseInt(xp) || 500,
-    units: units.map(m => ({
-      title: m.title.trim(),
-      tasks: m.tasks.map(t => ({
-        title: t.title.trim(),
-        lessons: t.lessons.map(l => ({
-          question: l.question.trim(),
-          choices: l.choices.map(c => ({ label: c.label.trim(), correct: c.correct }))
-        }))
-      }))
-    }))
-  });
+  const addChoice = (moduleId, taskId, lessonId) =>
+    changeLesson(moduleId, taskId, lessonId, (l) => ({ ...l, choices: [...l.choices, emptyChoice()] }));
+  const removeChoice = (moduleId, taskId, lessonId, choiceId) =>
+    changeLesson(moduleId, taskId, lessonId, (l) => ({ ...l, choices: dropChoice(l.choices, choiceId) }));
+  const setChoiceLabel = (moduleId, taskId, lessonId, choiceId, value) =>
+    changeLesson(moduleId, taskId, lessonId, (l) => ({
+      ...l,
+      choices: mapById(l.choices, choiceId, (c) => ({ ...c, label: value }))
+    }));
+  const setCorrectChoice = (moduleId, taskId, lessonId, choiceId) =>
+    changeLesson(moduleId, taskId, lessonId, (l) => ({
+      ...l,
+      choices: l.choices.map((c) => ({ ...c, correct: c.id === choiceId }))
+    }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
+    const form = { title, description, category, difficulty, xp, units };
+    const validationError = validateCourse(form);
+    setError(validationError || '');
+    if (validationError) return;
+
     setSubmitting(true);
-    const payload = buildPayload();
-    const ok = await onSubmit(payload);
-    if (ok) {
+    const saved = await onSubmit(buildPayload(form));
+    if (saved) {
       setTitle('');
       setDescription('');
       setCategory('');
       setDifficulty('beginner');
-      setXp(500);
+      setXp(DEFAULT_XP);
       setUnits([]);
-      idCounter.current = 0;
     }
     setSubmitting(false);
   };
@@ -257,7 +149,7 @@ export default function CourseEditor({ onSubmit }) {
                   <Input
                     label="Título do módulo"
                     value={module.title}
-                    onChange={e => updateModuleTitle(module.id, e.target.value)}
+                    onChange={e => setModuleTitle(module.id, e.target.value)}
                     wrapperClassName="flex-1"
                   />
                   <Button variant="danger" onClick={() => removeModule(module.id)}>Remover</Button>
@@ -269,7 +161,7 @@ export default function CourseEditor({ onSubmit }) {
                         <Input
                           label="Título da tarefa"
                           value={task.title}
-                          onChange={e => updateTaskTitle(module.id, task.id, e.target.value)}
+                          onChange={e => setTaskTitle(module.id, task.id, e.target.value)}
                           wrapperClassName="flex-1"
                         />
                         <div className="flex gap-2">
@@ -284,7 +176,7 @@ export default function CourseEditor({ onSubmit }) {
                               <Textarea
                                 label="Pergunta"
                                 value={lesson.question}
-                                onChange={e => updateLessonQuestion(module.id, task.id, lesson.id, e.target.value)}
+                                onChange={e => setQuestion(module.id, task.id, lesson.id, e.target.value)}
                                 rows={2}
                                 wrapperClassName="flex-1"
                               />
@@ -306,7 +198,7 @@ export default function CourseEditor({ onSubmit }) {
                                   <input
                                     type="text"
                                     value={choice.label}
-                                    onChange={e => updateChoice(module.id, task.id, lesson.id, choice.id, 'label', e.target.value)}
+                                    onChange={e => setChoiceLabel(module.id, task.id, lesson.id, choice.id, e.target.value)}
                                     placeholder="Alternativa"
                                     className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500"
                                   />

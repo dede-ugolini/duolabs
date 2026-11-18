@@ -26,7 +26,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
         "400":
-          description: invalid JSON
+          description: invalid JSON, or name/password empty
         "409":
           description: name already taken
 
@@ -138,7 +138,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Course"
         "400":
-          description: invalid course id or invalid JSON
+          description: invalid course id, invalid JSON or invalid difficulty
         "401":
           description: unauthorized
         "403":
@@ -262,6 +262,8 @@ paths:
           description: invalid JSON
         "401":
           description: unauthorized
+        "404":
+          description: course not found
         "409":
           description: already enrolled
 
@@ -269,6 +271,7 @@ paths:
     delete:
       summary: Unenroll from a course
       operationId: unenroll
+      description: Only the owner of the enrollment or an admin.
       security:
         - bearerAuth: []
       parameters:
@@ -284,6 +287,8 @@ paths:
           description: invalid enrollment id
         "401":
           description: unauthorized
+        "403":
+          description: the enrollment belongs to another user
         "404":
           description: not found
 

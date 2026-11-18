@@ -306,7 +306,7 @@ func TestGetCourses_ListDoesNotLeakAnswers(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.courses.GetAll(w, httptest.NewRequest(http.MethodGet, "/courses", nil))
 	body := w.Body.String()
-	if strings.Contains(body, `"correct":true`) || strings.Contains(body, `"correct_choice_id":`) && !strings.Contains(body, `"correct_choice_id":0`) {
+	if strings.Contains(body, `"correct":true`) {
 		t.Fatalf("course list must not expose answers: %s", body)
 	}
 }

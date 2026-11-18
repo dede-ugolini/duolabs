@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"errors"
 	"log"
 
 	"duolabs/model"
@@ -254,16 +255,21 @@ func sampleCourses() []model.Course {
 }
 
 // Run seeds the sample courses into an empty database.
-func Run(db *gorm.DB) {
+func Run(db *gorm.DB) error {
 	var count int64
-	db.Model(&model.Course{}).Count(&count)
+	if err := db.Model(&model.Course{}).Count(&count).Error; err != nil {
+		return err
+	}
 	if count > 0 {
-		return
+		return nil
 	}
 	for _, c := range sampleCourses() {
-		db.Create(&c)
+		if err := db.Create(&c).Error; err != nil {
+			return err
+		}
 	}
 	log.Println("Database seeded with sample courses successfully!")
+	return nil
 }
 
 // Upgrade brings databases seeded with the old one-question
@@ -294,7 +300,7 @@ func Upgrade(db *gorm.DB) error {
 		for _, sample := range sampleCourses() {
 			var course model.Course
 			if err := tx.Where("title = ?", sample.Title).First(&course).Error; err != nil {
-				if err == gorm.ErrRecordNotFound {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
 					continue
 				}
 				return err

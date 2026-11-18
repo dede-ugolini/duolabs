@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
+	"time"
 
 	"duolabs/handler"
 	"duolabs/model"
@@ -13,102 +13,108 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
+const defaultAdminPassword = "admin123"
+
 func main() {
-	db, err := gorm.Open(sqlite.Open(envOr("DB_PATH", "duolabs.db")), &gorm.Config{})
+	db, err := openDatabase(envOr("DB_PATH", "duolabs.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := db.AutoMigrate(&model.Course{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Unit{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Task{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Lesson{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Choice{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.User{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Enrollment{}); err != nil {
-		log.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.Answer{}); err != nil {
-		log.Fatal(err)
-	}
+	configureAuth()
+	seedDatabase(db)
 
-	seed.Run(db)
+	staticDir := envOr("STATIC_DIR", "static")
+	addr := ":" + envOr("PORT", "8081")
+	log.Printf("API running on %s (static files from %s)", addr, staticDir)
+	log.Fatal(http.ListenAndServe(addr, handler.CORSMiddleware(newRouter(db, staticDir))))
+}
+
+// openDatabase opens the SQLite file and creates or updates every table.
+func openDatabase(path string) (*gorm.DB, error) {
+	// "record not found" is a normal answer here (e.g. checking whether a
+	// name is taken), so it is not logged as an error.
+	quiet := logger.New(log.New(os.Stdout, "", log.LstdFlags), logger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  logger.Warn,
+		IgnoreRecordNotFoundError: true,
+	})
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: quiet})
+	if err != nil {
+		return nil, err
+	}
+	err = db.AutoMigrate(
+		&model.Course{}, &model.Unit{}, &model.Task{}, &model.Lesson{}, &model.Choice{},
+		&model.User{}, &model.Enrollment{}, &model.Answer{},
+	)
+	return db, err
+}
+
+// configureAuth reads the JWT signing key from $JWT_SECRET. Without it the
+// handler package keeps its development default, which anyone can forge.
+func configureAuth() {
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		handler.SetJWTSecret(secret)
+		return
+	}
+	log.Println("WARNING: JWT_SECRET is not set; using the insecure development default")
+}
+
+// seedDatabase fills a new database with the sample courses, keeps old ones
+// up to date and makes sure the admin account exists.
+func seedDatabase(db *gorm.DB) {
+	if err := seed.Run(db); err != nil {
+		log.Printf("seed.Run: %v", err)
+	}
 	if err := seed.Upgrade(db); err != nil {
 		log.Printf("seed.Upgrade: %v", err)
 	}
 
-	courseStore := store.NewSQLiteCourseStore(db)
-	courseHandler := handler.NewCourseHandler(courseStore)
-
-	userStore := store.NewSQLiteUserStore(db)
-	userHandler := handler.NewUserHandler(userStore)
-
 	adminName := envOr("ADMIN_NAME", "admin")
-	if err := handler.EnsureAdmin(userStore, adminName, envOr("ADMIN_PASSWORD", "admin123")); err != nil {
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	if adminPassword == "" {
+		log.Printf("WARNING: ADMIN_PASSWORD is not set; the admin password is %q", defaultAdminPassword)
+		adminPassword = defaultAdminPassword
+	}
+	if err := seed.EnsureAdmin(store.NewSQLiteUserStore(db), adminName, adminPassword); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("Admin user %q ready", adminName)
+}
 
-	enrollmentStore := store.NewSQLiteEnrollmentStore(db)
-	enrollmentHandler := handler.NewEnrollmentHandler(enrollmentStore)
-
-	progressStore := store.NewSQLiteProgressStore(db)
-	progressHandler := handler.NewProgressHandler(progressStore)
+// newRouter wires stores, handlers and routes. Writes to courses require an
+// admin token; enrolling and answering require any logged-in user.
+func newRouter(db *gorm.DB, staticDir string) *http.ServeMux {
+	courses := handler.NewCourseHandler(store.NewSQLiteCourseStore(db))
+	users := handler.NewUserHandler(store.NewSQLiteUserStore(db))
+	enrollments := handler.NewEnrollmentHandler(store.NewSQLiteEnrollmentStore(db))
+	progress := handler.NewProgressHandler(store.NewSQLiteProgressStore(db))
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /courses", courseHandler.GetAll)
-	mux.HandleFunc("POST /courses", handler.AdminMiddleware(courseHandler.Create))
-	mux.HandleFunc("GET /courses/{id}", courseHandler.GetByID)
-	mux.HandleFunc("DELETE /courses/{id}", handler.AdminMiddleware(courseHandler.Delete))
-	mux.HandleFunc("PUT /courses/{id}", handler.AdminMiddleware(courseHandler.Update))
+	mux.HandleFunc("GET /courses", courses.GetAll)
+	mux.HandleFunc("POST /courses", handler.AdminMiddleware(courses.Create))
+	mux.HandleFunc("GET /courses/{id}", courses.GetByID)
+	mux.HandleFunc("DELETE /courses/{id}", handler.AdminMiddleware(courses.Delete))
+	mux.HandleFunc("PUT /courses/{id}", handler.AdminMiddleware(courses.Update))
 
-	mux.HandleFunc("GET /courses/{id}/progress", handler.AuthMiddleware(progressHandler.CourseProgress))
-	mux.HandleFunc("POST /lessons/{id}/answer", handler.AuthMiddleware(progressHandler.Answer))
+	mux.HandleFunc("GET /courses/{id}/progress", handler.AuthMiddleware(progress.CourseProgress))
+	mux.HandleFunc("POST /lessons/{id}/answer", handler.AuthMiddleware(progress.Answer))
 
-	mux.HandleFunc("POST /register", userHandler.Register)
-	mux.HandleFunc("POST /login", userHandler.Login)
+	mux.HandleFunc("POST /register", users.Register)
+	mux.HandleFunc("POST /login", users.Login)
 
-	mux.HandleFunc("POST /enrollments", handler.AuthMiddleware(enrollmentHandler.Enroll))
-	mux.HandleFunc("DELETE /enrollments/{id}", handler.AuthMiddleware(enrollmentHandler.Unenroll))
-	mux.HandleFunc("GET /enrollments", enrollmentHandler.FindAll)
-	mux.HandleFunc("GET /enrollments/user/{user_id}", enrollmentHandler.FindByUser)
-	mux.HandleFunc("GET /enrollments/course/{course_id}", enrollmentHandler.FindByCourse)
+	mux.HandleFunc("POST /enrollments", handler.AuthMiddleware(enrollments.Enroll))
+	mux.HandleFunc("DELETE /enrollments/{id}", handler.AuthMiddleware(enrollments.Unenroll))
+	mux.HandleFunc("GET /enrollments", enrollments.FindAll)
+	mux.HandleFunc("GET /enrollments/user/{user_id}", enrollments.FindByUser)
+	mux.HandleFunc("GET /enrollments/course/{course_id}", enrollments.FindByCourse)
 
-	staticDir := envOr("STATIC_DIR", "static")
-	mux.HandleFunc("GET /", staticHandler(staticDir))
-
-	addr := ":" + envOr("PORT", "8081")
-	log.Printf("API running on %s (static files from %s)", addr, staticDir)
-	log.Fatal(http.ListenAndServe(addr, corsMiddleware(mux)))
-}
-
-// staticHandler serves the built frontend and falls back to index.html so that
-// client-side routing keeps working on deep links.
-func staticHandler(dir string) http.HandlerFunc {
-	fileServer := http.FileServer(http.Dir(dir))
-	return func(w http.ResponseWriter, r *http.Request) {
-		name := filepath.Join(dir, filepath.Clean("/"+r.URL.Path))
-		if info, err := os.Stat(name); err == nil && !info.IsDir() {
-			fileServer.ServeHTTP(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
-	}
+	mux.HandleFunc("GET /", handler.StaticHandler(staticDir))
+	return mux
 }
 
 func envOr(key, fallback string) string {
@@ -116,17 +122,4 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }

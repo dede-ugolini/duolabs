@@ -10,6 +10,7 @@ import (
 
 	"duolabs/handler"
 	"duolabs/model"
+	"duolabs/seed"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -95,7 +96,7 @@ func loginToken(t *testing.T, h *handler.UserHandler, name, password string) str
 func TestEnsureAdmin_LoginPassesAdminMiddleware(t *testing.T) {
 	s := setupTestUserStore(t)
 	h := handler.NewUserHandler(s)
-	if err := handler.EnsureAdmin(s, "admin", "admin123"); err != nil {
+	if err := seed.EnsureAdmin(s, "admin", "admin123"); err != nil {
 		t.Fatal(err)
 	}
 	code, called := callAdminProtected(t, "Bearer "+loginToken(t, h, "admin", "admin123"))
@@ -131,7 +132,7 @@ func TestRegister_IgnoresRoleInBody(t *testing.T) {
 func TestRegister_DuplicateNameConflict(t *testing.T) {
 	s := setupTestUserStore(t)
 	h := handler.NewUserHandler(s)
-	if err := handler.EnsureAdmin(s, "admin", "admin123"); err != nil {
+	if err := seed.EnsureAdmin(s, "admin", "admin123"); err != nil {
 		t.Fatal(err)
 	}
 	if w := postJSON(h.Register, "/register", map[string]string{"name": "admin", "password": "x"}); w.Code != http.StatusConflict {
@@ -145,7 +146,7 @@ func TestEnsureAdmin_PromotesAndResetsExistingUser(t *testing.T) {
 	if w := postJSON(h.Register, "/register", map[string]string{"name": "admin", "password": "squatter"}); w.Code != http.StatusCreated {
 		t.Fatalf("register: expected 201, got %d", w.Code)
 	}
-	if err := handler.EnsureAdmin(s, "admin", "admin123"); err != nil {
+	if err := seed.EnsureAdmin(s, "admin", "admin123"); err != nil {
 		t.Fatal(err)
 	}
 	if w := postJSON(h.Login, "/login", map[string]string{"name": "admin", "password": "squatter"}); w.Code != http.StatusUnauthorized {

@@ -1,10 +1,8 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"duolabs/model"
 	"duolabs/store"
@@ -21,43 +19,56 @@ func NewEnrollmentHandler(s store.EnrollmentStore) *EnrollmentHandler {
 }
 
 func (h *EnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromContext(r)
-	if userID == 0 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	userID, ok := currentUser(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
 		CourseID uint `json:"course_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+	if !decodeJSON(w, r, &body) {
 		return
 	}
 	enrollment := model.Enrollment{UserID: userID, CourseID: body.CourseID}
 	if err := h.store.Enroll(&enrollment); err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			http.Error(w, "course not found", http.StatusNotFound)
+		case errors.Is(err, gorm.ErrDuplicatedKey):
 			http.Error(w, "already enrolled", http.StatusConflict)
-			return
+		default:
+			internalError(w, err)
 		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(enrollment)
+	writeJSON(w, http.StatusCreated, enrollment)
 }
 
+// Unenroll cancels an enrollment. Only its owner (or an admin) may do it.
 func (h *EnrollmentHandler) Unenroll(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.PathValue("id"))
-	if id <= 0 || err != nil {
-		http.Error(w, "invalid enrollment id", http.StatusBadRequest)
+	userID, ok := currentUser(w, r)
+	if !ok {
 		return
 	}
-	if err := h.store.Unenroll(uint(id)); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+	id, ok := pathID(w, r, "id", "invalid enrollment id")
+	if !ok {
+		return
+	}
+	enrollment, err := h.store.FindByID(uint(id))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if enrollment.UserID != userID && RoleFromContext(r) != model.RoleAdmin {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := h.store.Unenroll(enrollment.ID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		internalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -66,36 +77,34 @@ func (h *EnrollmentHandler) Unenroll(w http.ResponseWriter, r *http.Request) {
 func (h *EnrollmentHandler) FindAll(w http.ResponseWriter, _ *http.Request) {
 	enrollments, err := h.store.FindAll()
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		internalError(w, err)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(enrollments)
+	writeJSON(w, http.StatusOK, enrollments)
 }
 
 func (h *EnrollmentHandler) FindByUser(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.PathValue("user_id"))
-	if id <= 0 || err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
+	id, ok := pathID(w, r, "user_id", "invalid user id")
+	if !ok {
 		return
 	}
 	courses, err := h.store.FindByUser(uint(id))
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		internalError(w, err)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(courses)
+	writeJSON(w, http.StatusOK, courses)
 }
 
 func (h *EnrollmentHandler) FindByCourse(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.PathValue("course_id"))
-	if id <= 0 || err != nil {
-		http.Error(w, "invalid course id", http.StatusBadRequest)
+	id, ok := pathID(w, r, "course_id", "invalid course id")
+	if !ok {
 		return
 	}
 	users, err := h.store.FindByCourse(uint(id))
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		internalError(w, err)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(users)
+	writeJSON(w, http.StatusOK, users)
 }

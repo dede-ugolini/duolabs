@@ -17,6 +17,16 @@ const (
 	roleKey   contextKey = "role"
 )
 
+// jwtSecret signs and verifies the tokens. The default is only meant for
+// development: main replaces it with $JWT_SECRET through SetJWTSecret.
+var jwtSecret = []byte("duolabs-secret")
+
+// SetJWTSecret replaces the signing key. Call it once at startup, before
+// serving requests.
+func SetJWTSecret(secret string) {
+	jwtSecret = []byte(secret)
+}
+
 // claimsFromRequest validates the Bearer token (HS256 only) and returns its
 // claims.
 func claimsFromRequest(r *http.Request) (jwt.MapClaims, bool) {
@@ -84,4 +94,15 @@ func RoleFromContext(r *http.Request) string {
 func UserIDFromContext(r *http.Request) uint {
 	id, _ := r.Context().Value(userIDKey).(uint)
 	return id
+}
+
+// currentUser returns the id of the authenticated user. Without one it
+// answers 401 and reports false.
+func currentUser(w http.ResponseWriter, r *http.Request) (uint, bool) {
+	id := UserIDFromContext(r)
+	if id == 0 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return 0, false
+	}
+	return id, true
 }

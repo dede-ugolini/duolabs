@@ -7,7 +7,10 @@ import (
 )
 
 type EnrollmentStore interface {
+	// Enroll returns gorm.ErrRecordNotFound for an unknown course and
+	// gorm.ErrDuplicatedKey when the user is already enrolled in it.
 	Enroll(enrollment *model.Enrollment) error
+	FindByID(id uint) (*model.Enrollment, error)
 	Unenroll(id uint) error
 	FindByUser(userID uint) ([]model.Course, error)
 	FindByCourse(courseID uint) ([]model.User, error)
@@ -23,12 +26,29 @@ func NewSQLiteEnrollmentStore(db *gorm.DB) *SQLiteEnrollmentStore {
 }
 
 func (s *SQLiteEnrollmentStore) Enroll(enrollment *model.Enrollment) error {
-	var existing model.Enrollment
-	err := s.db.Where("user_id = ? AND course_id = ?", enrollment.UserID, enrollment.CourseID).First(&existing).Error
-	if err == nil {
+	var courses int64
+	if err := s.db.Model(&model.Course{}).Where("id = ?", enrollment.CourseID).Count(&courses).Error; err != nil {
+		return err
+	}
+	if courses == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	var existing int64
+	if err := s.db.Model(&model.Enrollment{}).
+		Where("user_id = ? AND course_id = ?", enrollment.UserID, enrollment.CourseID).
+		Count(&existing).Error; err != nil {
+		return err
+	}
+	if existing > 0 {
 		return gorm.ErrDuplicatedKey
 	}
 	return s.db.Create(enrollment).Error
+}
+
+func (s *SQLiteEnrollmentStore) FindByID(id uint) (*model.Enrollment, error) {
+	var enrollment model.Enrollment
+	err := s.db.First(&enrollment, id).Error
+	return &enrollment, err
 }
 
 func (s *SQLiteEnrollmentStore) Unenroll(id uint) error {
